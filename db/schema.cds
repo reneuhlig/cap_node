@@ -5,7 +5,11 @@ using { Currency, cuid, managed, User, Country} from '@sap/cds/common';
 entity Products : cuid, managed {
     name  : String(100);
     price : Decimal(10,2);
-    stock : Integer;   
+    items : Composition of many Articles on items.product = $self;
 }
 
-
+entity Articles : cuid, managed {
+    serialNumber : String(100);
+    status       : String(30);
+    product      : Association to Products;
+}

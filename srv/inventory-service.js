@@ -1,45 +1,79 @@
 const cds = require('@sap/cds');
 
 module.exports = async (srv) => {
-    const { Products } = srv.entities;
+    const { Products, Articles } = srv.entities;
 
-    // Logging middleware
-    srv.before('*', '*', (req) => {
-        console.log(`Method: ${req.method}, Target: ${req.target.name}`);
-    });
+    // CRUD Operations for Articles
+    srv.on('CREATE', 'Articles', async (req) => {
+        const article = req.data;
+        await INSERT.into(Articles).entries(article);
 
-    // Create operation: Upon product creation, calculate total_value
-    srv.before('CREATE', 'Products', async (req) => {
-        if (req.data.price && req.data.stock) {
-            req.data.total_value = parseFloat(req.data.price) * parseFloat(req.data.stock);
+        const productId = article.product_ID;
+        if (productId) {
+            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
+            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
         }
+
+        return req.data;
     });
 
-    // Update operation: Calculate total_value when price or stock change
-    srv.before('UPDATE', 'Products', async (req) => {
-        const product = await cds.run(SELECT.one.from(Products).where({ ID: req.data.ID }));
-        if (product && (req.data.price !== undefined || req.data.stock !== undefined)) {
-            const price = req.data.price !== undefined ? req.data.price : product.price;
-            const stock = req.data.stock !== undefined ? req.data.stock : product.stock;
-            req.data.total_value = parseFloat(price) * parseFloat(stock);
+    srv.on('READ', 'Articles', async (req) => {
+        return await SELECT.from(Articles);
+    });
+
+    srv.on('UPDATE', 'Articles', async (req) => {
+        const articleId = req.data.ID;
+        await UPDATE(Articles).set(req.data).where({ ID: articleId });
+
+        const article = await SELECT.one.from(Articles).where({ ID: articleId });
+        const productId = article.product_ID;
+        if (productId) {
+            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
+            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
         }
+
+        return req.data;
     });
 
-    // Read operation: Calculate total_value on the fly if not persisted
-    srv.after('READ', 'Products', (each) => {
-        if (each.price && each.stock) {
-            each.total_value = (each.price * each.stock).toFixed(2); // Nachkommastellen beibehalten
+    srv.on('DELETE', 'Articles', async (req) => {
+        const articleId = req.data.ID;
+        const article = await SELECT.one.from(Articles).where({ ID: articleId });
+        const productId = article.product_ID;
+
+        await DELETE.from(Articles).where({ ID: articleId });
+
+        if (productId) {
+            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
+            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
         }
+
+        return req.data;
     });
 
-    // Delete Operation: Logging deletion
-    srv.before('DELETE', 'Products', async (req) => {
-        console.log(`Deleting product with ID: ${req.data.ID}`);
+    // After READ for Products: calculate stock and total_value
+    srv.after('READ', 'Products', async (products, req) => {
+        if (!Array.isArray(products)) products = [products];
+        await Promise.all(products.map(async product => {
+            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: product.ID });
+            product.stock = count;
+            if (product.price) {
+                product.total_value = (product.price * count).toFixed(2);
+            }
+        }));
     });
 
-    // Implement the action to sort products by total_value
+    // Action to sort products by total_value
     srv.on('sortProductsByTotalValue', async (req) => {
-        const products = await cds.run(SELECT.from(Products).columns('*', { total_value: (p => { return { expr: { ref: ['price'] }, '*': { expr: { ref: ['stock'] } } } }) }).orderBy('total_value desc'));
-        return products;
+        const products = await SELECT.from(Products);
+        const productsWithStockAndValue = await Promise.all(products.map(async product => {
+            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: product.ID });
+            product.stock = count;
+            if (product.price) {
+                product.total_value = (product.price * count).toFixed(2);
+            }
+            return product;
+        }));
+
+        return productsWithStockAndValue.sort((a, b) => b.total_value - a.total_value);
     });
 };
