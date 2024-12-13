@@ -3,7 +3,6 @@ const cds = require('@sap/cds');
 module.exports = async (srv) => {
     const { Products, Articles } = srv.entities;
 
-    // CRUD Operations for Articles
     srv.on('CREATE', 'Articles', async (req) => {
         const article = req.data;
         await INSERT.into(Articles).entries(article);
