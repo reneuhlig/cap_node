@@ -10,6 +10,5 @@ entity Products : cuid, managed {
 
 entity Articles : cuid, managed {
     serialNumber : String(100);
-    status       : String(30);
     product      : Association to Products;
 }
