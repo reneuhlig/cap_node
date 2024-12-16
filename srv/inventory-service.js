@@ -1,78 +1,83 @@
 const cds = require('@sap/cds');
 
 module.exports = async (srv) => {
+
     const { Products, Articles } = srv.entities;
-
+    
     srv.on('CREATE', 'Articles', async (req) => {
-        const article = req.data;
-        await INSERT.into(Articles).entries(article);
-
-        const productId = article.product_ID;
-        if (productId) {
-            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
-            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
-        }
-
-        return req.data;
+        const { data } = req;
+        const inserted = await cds.run(INSERT.into(Articles).entries(data));
+        return inserted;
     });
 
+    
     srv.on('READ', 'Articles', async (req) => {
-        return await SELECT.from(Articles);
+        const result = await SELECT.from(Articles)
+        return result;
     });
 
+    
     srv.on('UPDATE', 'Articles', async (req) => {
-        const articleId = req.data.ID;
-        await UPDATE(Articles).set(req.data).where({ ID: articleId });
-
-        const article = await SELECT.one.from(Articles).where({ ID: articleId });
-        const productId = article.product_ID;
-        if (productId) {
-            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
-            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
-        }
-
-        return req.data;
+        const updated = await cds.run(
+        UPDATE(Articles)
+            .set(data)
+            .where({ ID: data.ID })
+        );
+        return updated;
     });
 
+  
     srv.on('DELETE', 'Articles', async (req) => {
-        const articleId = req.data.ID;
-        const article = await SELECT.one.from(Articles).where({ ID: articleId });
-        const productId = article.product_ID;
+        const { ID } = req.data;
+        const deleted = await cds.run(DELETE.from(Articles).where({ ID }));
+        return deleted;
+    });
 
-        await DELETE.from(Articles).where({ ID: articleId });
+  
+    srv.on('READ', 'Products', async (req) => {
+    const products = await cds.run(SELECT.from(Products));
+    const articles = await cds.run(SELECT.from(Articles));
 
-        if (productId) {
-            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: productId });
-            await UPDATE(Products).set({ stock: count }).where({ ID: productId });
+    // Artikel zählen
+    const articleCountMap = {};
+    articles.forEach((article) => {
+      const productId = article.product_ID;
+      if (productId) {
+        articleCountMap[productId] = (articleCountMap[productId] || 0) + 1;
+      }
+    });
+
+    // Produkte aktualisieren
+    products.forEach((product) => {
+      const stock = articleCountMap[product.ID] || 0;
+      product.stock = stock;
+      product.totalValue = product.price * stock;
+    });
+
+    // Produkte sortieren (absteigend nach totalValue)
+    bubbleSort(products);
+
+    return products;
+  });
+
+    // Bubble Sort Funktion
+    function bubbleSort(products) {
+        let n = products.length;
+        let swapped;
+
+        do {
+        swapped = false;
+        for (let i = 0; i < n - 1; i++) {
+            if (products[i].totalValue < products[i + 1].totalValue) {
+            // Elemente tauschen
+            const temp = products[i];
+            products[i] = products[i + 1];
+            products[i + 1] = temp;
+            swapped = true;
+            }
         }
-
-        return req.data;
-    });
-
-    // After READ for Products: calculate stock and total_value
-    srv.after('READ', 'Products', async (products, req) => {
-        if (!Array.isArray(products)) products = [products];
-        await Promise.all(products.map(async product => {
-            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: product.ID });
-            product.stock = count;
-            if (product.price) {
-                product.total_value = (product.price * count).toFixed(2);
-            }
-        }));
-    });
-
-    // Action to sort products by total_value
-    srv.on('sortProductsByTotalValue', async (req) => {
-        const products = await SELECT.from(Products);
-        const productsWithStockAndValue = await Promise.all(products.map(async product => {
-            const { count } = await SELECT.one('count(*) as count').from(Articles).where({ product_ID: product.ID });
-            product.stock = count;
-            if (product.price) {
-                product.total_value = (product.price * count).toFixed(2);
-            }
-            return product;
-        }));
-
-        return productsWithStockAndValue.sort((a, b) => b.total_value - a.total_value);
-    });
+        n--; // Letztes Element ist sortiert
+        } while (swapped);
+    }
+    
 };
