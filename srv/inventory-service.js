@@ -42,9 +42,7 @@ module.exports = async (srv) => {
     const articleCountMap = {};
     articles.forEach((article) => {
       const productId = article.product_ID;
-      if (productId) {
-        articleCountMap[productId] = (articleCountMap[productId] || 0) + 1;
-      }
+      articleCountMap[productId] = (articleCountMap[productId] || 0) + 1;
     });
 
     // Produkte aktualisieren
