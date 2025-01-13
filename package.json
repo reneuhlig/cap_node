@@ -9,7 +9,7 @@
     "@sap/cds": "^8",
     "express": "^4",
     "@cap-js/hana": "^1",
-    "@sap/xssec": "^4"
+    "@sap/xssec": "^3"
   },
   "devDependencies": {
     "@cap-js/cds-types": "^0.7.0",
@@ -26,7 +26,7 @@
     "requires": {
       "[production]": {
         "db": "hana",
-        "auth": "mocked"
+        "auth": "xsuaa"
       }
     }
   }
